@@ -11,5 +11,6 @@
   },
   "scripts": {
     "start": "node server.js"
-  }
-}
+  },
+  "homepage": "https://recuperacionyoss.ticsgrupoc.site/"
+} 

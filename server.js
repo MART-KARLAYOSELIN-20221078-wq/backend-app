@@ -6,30 +6,36 @@ const jwt = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
 const mysql = require("mysql2");
 const cors = require("cors");
+
 const app = express();
 app.use(bodyParser.json());
 
 // Permitir solicitudes desde el frontend
 app.use(cors({
-    origin: "http://localhost:3000", // Dirección del cliente
+    origin: ["http://localhost:3000", 'https://recuperacionyos.recuperaciokarla.ticsgrupoc.site'],// Dirección del cliente
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true
 }));
 
-// Configuración de la base de datos MySQL
-const db = mysql.createConnection({
+// Configuración de la base de datos MySQL con pool
+const pool = mysql.createPool({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
     password: process.env.DB_PASS,
     database: process.env.DB_NAME,
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
 });
 
-db.connect((err) => {
+// Probar la conexión al inicio
+pool.getConnection((err, connection) => {
     if (err) {
         console.error("Error al conectar a la base de datos:", err);
         process.exit(1);
     }
-    console.log("Conectado a la base de datos MySQL");
+    console.log("Conexión al pool de MySQL exitosa");
+    connection.release();
 });
 
 // Configuración de Nodemailer
@@ -41,6 +47,7 @@ const transporter = nodemailer.createTransport({
     },
 });
 
+// Rutas de la API
 app.post("/api/register", async (req, res) => {
     const {
         firstName,
@@ -54,7 +61,7 @@ app.post("/api/register", async (req, res) => {
         secretAnswer,
     } = req.body;
 
-    db.query(
+    pool.query(
         "SELECT * FROM users WHERE username = ? OR email = ?",
         [username, email],
         async (err, results) => {
@@ -64,7 +71,7 @@ app.post("/api/register", async (req, res) => {
 
             const hashedPassword = await bcrypt.hash(password, 10);
 
-            db.query(
+            pool.query(
                 `INSERT INTO users 
                 (first_name, last_name, mother_last_name, username, email, password, phone, secret_question, secret_answer) 
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -91,12 +98,10 @@ app.post("/api/register", async (req, res) => {
     );
 });
 
-
-// **Ruta de inicio de sesión**
 app.post("/api/login", (req, res) => {
     const { username, password } = req.body;
 
-    db.query("SELECT * FROM users WHERE username = ?", [username], async (err, results) => {
+    pool.query("SELECT * FROM users WHERE username = ?", [username], async (err, results) => {
         if (err) return res.status(500).send({ message: "Error en el servidor" });
         if (results.length === 0) return res.status(404).send({ message: "Usuario no encontrado" });
 
@@ -108,11 +113,10 @@ app.post("/api/login", (req, res) => {
             expiresIn: "1h",
         });
 
-        // Enviar el token y el nombre de usuario
         res.send({
             message: "Inicio de sesión exitoso",
             token,
-            username: user.username, // Esto incluye el nombre del usuario
+            username: user.username,
         });
     });
 });
@@ -120,13 +124,11 @@ app.post("/api/login", (req, res) => {
 app.post("/api/get-secret-question", (req, res) => {
     const { email } = req.body;
 
-    // Verifica que se haya recibido un correo electrónico
     if (!email) {
         return res.status(400).send({ message: "El correo es obligatorio" });
     }
 
-    // Consulta para obtener la pregunta secreta del usuario
-    db.query("SELECT secret_question FROM users WHERE email = ?", [email], (err, results) => {
+    pool.query("SELECT secret_question FROM users WHERE email = ?", [email], (err, results) => {
         if (err) {
             console.error("Error al consultar la base de datos:", err);
             return res.status(500).send({ message: "Error en el servidor" });
@@ -141,14 +143,10 @@ app.post("/api/get-secret-question", (req, res) => {
     });
 });
 
-
-
-
-// **Ruta para solicitar recuperación de contraseña**
 app.post("/api/forgot-password", (req, res) => {
     const { email } = req.body;
 
-    db.query("SELECT * FROM users WHERE email = ?", [email], async (err, results) => {
+    pool.query("SELECT * FROM users WHERE email = ?", [email], async (err, results) => {
         if (err) return res.status(500).send({ message: "Error en el servidor" });
         if (results.length === 0) return res.status(404).send({ message: "Correo no encontrado" });
 
@@ -168,15 +166,10 @@ app.post("/api/forgot-password", (req, res) => {
     });
 });
 
-// **Ruta para recuperación mediante pregunta secreta**
 app.post("/api/recover-password", (req, res) => {
-    console.log("Solicitud recibida en /api/recover-password");
     const { email, secretQuestion, secretAnswer } = req.body;
 
-    console.log("Datos recibidos del frontend:", { email, secretQuestion, secretAnswer });
-
-    // Consulta para buscar el usuario por correo y pregunta secreta
-    db.query(
+    pool.query(
         "SELECT * FROM users WHERE email = ? AND secret_question = ?",
         [email, secretQuestion],
         (err, results) => {
@@ -202,27 +195,15 @@ app.post("/api/recover-password", (req, res) => {
     );
 });
 
-
-
-// **Ruta para restablecer contraseña**
 app.post("/api/reset-password/:token", async (req, res) => {
     const { token } = req.params;
     const { password } = req.body;
 
     try {
-        console.log("Token recibido:", token);
-        console.log("Nueva contraseña recibida:", password);
-
-        // Verificar el token JWT
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        console.log("Datos decodificados del token:", decoded);
-
-        // Encriptar la nueva contraseña
         const hashedPassword = await bcrypt.hash(password, 10);
-        console.log("Contraseña encriptada:", hashedPassword);
 
-        // Actualizar la base de datos
-        db.query(
+        pool.query(
             "UPDATE users SET password = ? WHERE id = ?",
             [hashedPassword, decoded.id],
             (err, results) => {
@@ -232,16 +213,13 @@ app.post("/api/reset-password/:token", async (req, res) => {
                 }
 
                 if (results.affectedRows === 0) {
-                    console.log("Usuario no encontrado.");
                     return res.status(404).send({ message: "Usuario no encontrado" });
                 }
 
-                console.log("Contraseña actualizada con éxito.");
                 res.send({ message: "Contraseña restablecida con éxito" });
             }
         );
     } catch (error) {
-        console.error("Error al procesar el restablecimiento de contraseña:", error);
         res.status(400).send({ message: "Token inválido o expirado" });
     }
 });
@@ -252,7 +230,7 @@ app.post("/api/reset-password-direct", async (req, res) => {
     try {
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        db.query(
+        pool.query(
             "UPDATE users SET password = ? WHERE email = ?",
             [hashedPassword, email],
             (err, results) => {
@@ -269,11 +247,9 @@ app.post("/api/reset-password-direct", async (req, res) => {
             }
         );
     } catch (error) {
-        console.error("Error al encriptar la contraseña:", error);
         res.status(500).send({ message: "Error en el servidor" });
     }
 });
-
 
 // Servidor
 const PORT = process.env.PORT || 5000;
