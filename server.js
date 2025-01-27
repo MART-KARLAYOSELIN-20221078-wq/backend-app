@@ -250,6 +250,16 @@ app.post("/api/reset-password-direct", async (req, res) => {
         res.status(500).send({ message: "Error en el servidor" });
     }
 });
+app.get("/api/users", (req, res) => {
+    pool.query("SELECT id, first_name, last_name, username, email, phone FROM users", (err, results) => {
+        if (err) {
+            console.error("Error al consultar los usuarios:", err);
+            return res.status(500).send({ message: "Error en el servidor" });
+        }
+
+        res.send(results);
+    });
+});
 
 // Servidor
 const PORT = process.env.PORT || 5000;
