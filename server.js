@@ -152,7 +152,7 @@ app.post("/api/forgot-password", (req, res) => {
 
         const user = results[0];
         const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: "15m" });
-        const resetLink = `http://localhost:3000/reset-password/${token}`;
+        const resetLink = `https://recuperacionyos.recuperaciokarla.ticsgrupoc.site/reset-password/${token}`;
 
         await transporter.sendMail({
             from: `"Soporte" <${process.env.GMAIL_USER}>`,
