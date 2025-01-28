@@ -12,7 +12,7 @@ app.use(bodyParser.json());
 
 // Permitir solicitudes desde el frontend
 app.use(cors({
-    origin: ["http://localhost:3000", 'https://recuperacionyos.recuperaciokarla.ticsgrupoc.site','https://proyectousua.onrender.com','https://recuperacionyoss.ticsgrupoc.site/'],// Dirección del cliente
+    origin: ["http://localhost:3000", 'https://recuperacionyos.recuperaciokarla.ticsgrupoc.site','https://proyectousua.onrender.com','https://recuperacionyoss.ticsgrupoc.site'],// Dirección del cliente
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true
 }));
